@@ -87,8 +87,7 @@ The main R script (`scorecard_script.R`) performs the steps outlined above. Key 
 
 ## Results
 
-
-# Logistic Regression Coefficients (on WOE)
+### Logistic Regression Coefficients (on WOE)
 
 <table>
   <thead>
@@ -192,17 +191,23 @@ Both PSI values are far below 0.1, indicating no significant score distribution 
 ## Plots
 The script generates four plots:
 
-Score Distribution by Good/Bad – shows how scores separate good and bad borrowers.
-![Score Distribution](Score_Distribution.png)
+### Score Distribution by Good/Bad – shows how scores separate good and bad borrowers
+![Score Distribution](Credit_Risk_Scorecard_R/Outputs/Score_Distribution.png)
 
-ROC Curve – visualizes the model’s discrimination power.
-![ROC Curve](ROC_Curve.png)
+Bad samples are concentrated in lower score bands, while good samples are more concentrated in higher score bands, which is consistent with scorecard logic.
 
-PSI Internal (Train vs. Test) – bar chart comparing score distributions.
-![PSI Internal](PSI_Internal.png)
+### ROC Curve – visualizes the model’s discrimination power
+![ROC Curve](Credit_Risk_Scorecard_R/Outputs/ROC_Curve.png)
 
-PSI External (Train vs. External) – same comparison with the external scoring set.
-![PSI External](PSI_External.png)
+The Logistic Regression model achieved an AUC of 0.7806, indicating strong discriminative power.
+
+### PSI Internal (Train vs. Test) – bar chart comparing score distributions
+![PSI Internal](Credit_Risk_Scorecard_R/Outputs/PSI_Internal.png)
+
+### PSI External (Train vs. External) – same comparison with the external scoring set
+![PSI External](Credit_Risk_Scorecard_R/Outputs/PSI_External.png)
+
+Internal PSI = 0.0003 and external PSI = 0.0001, both far below 0.1, suggesting stable population distribution.
 
 ## Conclusion 
 A robust credit scorecard was developed using WOE binning and logistic regression. The model shows strong discriminatory power (AUC = 0.78, KS = 0.45) and stable score distributions across time and populations (PSI < 0.01). The resulting scorecard provides interpretable points per variable bin, suitable for deployment in credit risk assessment. The XGBoost model offers a marginal improvement in AUC, but the logistic model is preferred for its transparency and ease of interpretation.
