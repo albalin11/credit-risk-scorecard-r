@@ -1,42 +1,57 @@
 # Credit Risk Scorecard Model (R)
 
+![R](https://img.shields.io/badge/Language-R-blue)
+![Model](https://img.shields.io/badge/Model-Scorecard-green)
+![Status](https://img.shields.io/badge/Status-Production--Ready-brightgreen)
+
 ## Overview
-This project builds a credit risk scorecard to predict the probability of default using the Kaggle dataset **Give Me Some Credit**.  
-The goal is to develop an interpretable, stable, and deployment‑ready model for credit risk assessment. Logistic regression is used as the baseline scorecard model, and XGBoost is added as a performance benchmark.
+This project develops a **credit risk scorecard** to estimate the probability of default using the Kaggle dataset **Give Me Some Credit**.  
+
+The goal is to build a model that is:
+
+- **Interpretable** (regulatory-friendly)
+- **Stable** (robust across populations)
+- **Deployable** (convertible to a scorecard system)
+
+A **logistic regression scorecard** is used as the primary model, with **XGBoost** as a  performance benchmark.
 
 ## Dataset
 - **Source**: Kaggle – [Give Me Some Credit](https://www.kaggle.com/competitions/GiveMeSomeCredit/data)
-- **Training set**: `cs-training.csv` (149,999 rows)  
-- **External scoring set**: `cs-test.csv` (101,503 rows)  
-- **Target variable**: `SeriousDlqin2yrs` – 1 if the borrower was 90+ days past due or worse within 2 years, 0 otherwise.
-
-### Features
-| Variable | Description |
-|----------|-------------|
-| `RevolvingUtilizationOfUnsecuredLines` | Ratio of total balance to credit limit on revolving lines |
-| `age` | Age of borrower in years |
-| `NumberOfTime30.59DaysPastDueNotWorse` | Number of times 30‑59 days past due in last 2 years |
-| `DebtRatio` | Monthly debt payments / monthly gross income |
-| `MonthlyIncome` | Monthly income (contains missing values) |
-| `NumberOfOpenCreditLinesAndLoans` | Number of open credit lines and loans |
-| `NumberOfTimes90DaysLate` | Number of times 90+ days past due |
-| `NumberRealEstateLoansOrLines` | Number of real estate loans or lines |
-| `NumberOfTime60.89DaysPastDueNotWorse` | Number of times 60‑89 days past due |
-| `NumberOfDependents` | Number of dependents (contains missing values) |
-
----
+- Training set: 149,999 rows
+- External scoring set: 101,503 rows
+- Target variable: `SeriousDlqin2yrs` (1 = default, 0 = non-default)
 
 ## Methodology
 
 ### 1. Data Preprocessing
-- Remove rows with invalid age (`age <= 0`).
-- Split the training data into training (70%) and test (30%) sets.
-- Missing values in `MonthlyIncome` (19.8%) and `NumberOfDependents` (2.6%) are imputed using the **median** from the training set.
+- Removed invalid records (`age <= 0`)
+- Train/test split: 70% / 30%
+- Missing values:
+  -  `MonthlyIncome` (19.8%) → median imputation
+  -  `NumberOfDependents` (2.6%) → median imputation
+ 
+Median imputation is used for robustness to outliers and consistency with scorecard interpretability.
 
 ### 2. WOE Binning and IV Selection
-- **Weight of Evidence (WOE)** binning is applied to all continuous variables using the `scorecard` package.
-- **Information Value (IV)** is calculated to select features with moderate predictive power (`0.02 < IV < 0.5`).  
-  Selected features:
+- Applied **WOE (Weight of Evidence)** binning using the `scorecard` package.
+- Enforced **monotonicity** in WOE to ensure:
+  - consistent risk ordering  
+  - improved model stability  
+  - regulatory interpretability  
+
+- Special handling:
+  - Missing values treated as separate bins  
+  - Extreme values capped where necessary  
+
+- **Information Value (IV)** used for feature selection:
+
+> Selected features satisfy: `0.02 < IV < 0.5`
+
+This range balances predictive power while avoiding:
+- weak predictors (low IV)
+- overfitting or leakage (very high IV)
+
+#### Selected variables:
   - `DebtRatio`
   - `RevolvingUtilizationOfUnsecuredLines`
   - `age`
@@ -44,125 +59,102 @@ The goal is to develop an interpretable, stable, and deployment‑ready model fo
   - `NumberRealEstateLoansOrLines`
   - `NumberOfDependents`
 
-### 3. Logistic Regression Model
-- A logistic regression model is fitted on the WOE‑transformed training data using the selected features.
-- All coefficients are statistically significant (p < 0.001).
+### 3. Business Interpretation of Features
+Key variables align with domain knowledge in credit risk:
 
-### 4. XGBoost Benchmark
-- An XGBoost model is trained on the same WOE features for comparison.
-- Hyperparameters: `max_depth = 4`, `eta = 0.1`, `subsample = 0.8`, `colsample_bytree = 0.8`.
+- **RevolvingUtilizationOfUnsecuredLines**  
+  → High utilization indicates financial stress and increased default risk  
 
-### 5. Scorecard Conversion
-- The logistic regression coefficients are converted into a points‑based scorecard using the following parameters:
+- **DebtRatio**  
+  → Higher debt-to-income ratio implies weaker repayment capacity  
+
+- **age**  
+  → Younger borrowers tend to have higher risk due to income instability  
+
+- **NumberOfDependents**  
+  → More dependents increase financial burden  
+
+- **Credit line counts**  
+  → Reflect credit exposure and financial behavior patterns  
+
+This alignment enhances model interpretability and business trust.
+
+### 4. Logistic Regression Model
+- Model trained on WOE-transformed features  
+- All coefficients statistically significant (p < 0.001)
+
+Additional checks:
+- Multicollinearity assessed using **VIF**
+- Model kept simple to preserve interpretability
+- Coefficient signs consistent with economic intuition
+
+### 5. XGBoost Benchmark
+- Trained on same WOE features  
+- Parameters:
+  - `max_depth = 4`
+  - `eta = 0.1`
+  - `subsample = 0.8`
+  - `colsample_bytree = 0.8`
+
+**Purpose:**
+- Evaluate potential performance gain vs. interpretability trade-off
+
+### 6. Scorecard Construction
+
+The logistic model is converted into a points-based scorecard:
+
   - Base points: 600
   - Odds at base: 1:15 (good:bad)
-  - Points to Double Odds (PDO): 60
-- The score for each borrower is calculated as:  
+  - PDO (Points to Double Odds): 60
+    
+PDO = 60 is chosen as an industry standard to ensure:
+- intuitive scaling  
+- easy business interpretation
+     
+Score formula:  
   `Score = A - B * ln(odds)`  
-  where `odds = p / (1-p)`, `B = PDO / ln(2)`, and `A = Base + B * ln(odds0)`.
+where:
+  - `B = PDO / ln(2)`
+  - `A = Base + B * ln(odds0)`
+  - `odds = p / (1-p)`
 
-### 6. Model Evaluation
+### 7. Model Evaluation
+
+Metrics used:
+
 - **AUC** – measures discriminative power.
 - **KS** – maximum difference between cumulative good and bad distributions.
-- **PSI** – checks score distribution shifts between:
-  - Training vs. test set (internal PSI)
-  - Training vs. external scoring set (external PSI)
+- **PSI** – population stability
 
----
-
-## Code Structure
-The main R script (`scorecard_script.R`) performs the steps outlined above. Key packages used:
-- `scorecard` – WOE binning, IV calculation, scorecard conversion
-- `ggplot2` – visualizations
-- `ROCR`, `pROC` – performance metrics
-- `xgboost` – benchmark model
-
-## How to Reproduce
-1. Place `cs-training.csv` and `cs-test.csv` in your working directory.
-2. Install required packages:
-   ```r
-   install.packages(c("scorecard", "ggplot2", "ROCR", "xgboost", "pROC"))
-3. Run the script
-4. The console will display model summaries, AUC, KS, and PSI values. Plots will appear in the graphics device.
-
----
+PSI is used not only for validation but also for:
+- monitoring data drift  
+- triggering model retraining in production
 
 ## Results
 
-### Logistic Regression Coefficients (on WOE)
+### Model Performance
 
-<table>
-  <thead>
-    <tr>
-      <th>Feature</th>
-      <th>Estimate</th>
-      <th>Std. Error</th>
-      <th>z value</th>
-      <th>Pr(&gt;|z|)</th>
-      <th>Sig.</th>
-    </tr>
-  </thead>
-  <tbody>
-    <tr>
-      <td>(Intercept)</td>
-      <td>-2.63645</td>
-      <td>0.01432</td>
-      <td>-184.09</td>
-      <td>&lt; 2e-16</td>
-      <td>***</td>
-    </tr>
-    <tr>
-      <td>DebtRatio_woe</td>
-      <td>0.76230</td>
-      <td>0.05022</td>
-      <td>15.179</td>
-      <td>&lt; 2e-16</td>
-      <td>***</td>
-    </tr>
-    <tr>
-      <td>RevolvingUtilizationOfUnsecuredLines_woe</td>
-      <td>0.88987</td>
-      <td>0.01434</td>
-      <td>62.065</td>
-      <td>&lt; 2e-16</td>
-      <td>***</td>
-    </tr>
-    <tr>
-      <td>age_woe</td>
-      <td>0.50959</td>
-      <td>0.02933</td>
-      <td>17.372</td>
-      <td>&lt; 2e-16</td>
-      <td>***</td>
-    </tr>
-    <tr>
-      <td>NumberOfOpenCreditLinesAndLoans_woe</td>
-      <td>0.23281</td>
-      <td>0.04539</td>
-      <td>5.129</td>
-      <td>2.91e-07</td>
-      <td>***</td>
-    </tr>
-    <tr>
-      <td>NumberRealEstateLoansOrLines_woe</td>
-      <td>0.72691</td>
-      <td>0.05850</td>
-      <td>12.427</td>
-      <td>&lt; 2e-16</td>
-      <td>***</td>
-    </tr>
-    <tr>
-      <td>NumberOfDependents_woe</td>
-      <td>0.35976</td>
-      <td>0.07570</td>
-      <td>4.752</td>
-      <td>2.01e-06</td>
-      <td>***</td>
-    </tr>
-  </tbody>
-</table>
+| Model | AUC (Test) | KS |
+|------|------------|------|
+| Logistic Regression | 0.7806 | 0.4537 |
+| XGBoost | 0.7847 | — |
 
-## Scorecard Example
+Although XGBoost shows slightly higher AUC, logistic regression is preferred due to:
+
+- interpretability  
+- regulatory compliance  
+- ease of deployment as a scorecard  
+
+### Population Stability Index (PSI)
+
+| Comparison | PSI | Interpretation |
+|------------|------|----------------|
+| Train vs. Test | 0.0003 | Very stable |
+| Train vs. External | 0.0001 | Very stable |
+
+Both values < 0.1 indicate no significant distribution shift.
+
+## Scorecard example
 
 | Variable | Bin | Points |
 |----------|-----|--------|
@@ -172,25 +164,35 @@ The main R script (`scorecard_script.R`) performs the steps outlined above. Key 
 | age | [64, Inf) | 45 |
 | Base points |  | 594 |
 
-The final score is the sum of base points and points for each bin across all selected variables.
+Final score is the sum across all variable bins.
 
-## Performance Metrics
+## Deployment Considerations
 
-| Model | AUC (Test) | KS |
-|------|------------|------|
-| Logistic Regression | 0.7806 | 0.4537 |
-| XGBoost | 0.7847 | — |
+To simulate production usage:
 
-## Population Stability Index (PSI)
+- Implemented reusable scoring logic for new data  
+- Ensured binning consistency between training and scoring  
+- Model output can be directly used for:
+  - credit approval  
+  - risk-based pricing  
+  - limit assignment
 
-| Comparison | PSI | Interpretation |
-|------------|------|----------------|
-| Train vs. Test | 0.0003 | Very stable |
-| Train vs. External | 0.0001 | Very stable |
+## Code structure
 
-Both PSI values are far below 0.1, indicating no significant score distribution shift.
+project/
+├── data/
+├── src/
+│ ├── preprocessing.R
+│ ├── binning.R
+│ ├── model.R
+│ ├── evaluation.R
+├── main.R
+├── README.md
 
----
+This modular design improves:
+- maintainability  
+- reproducibility  
+- production readiness  
 
 ## Plots
 The script generates four plots:
@@ -213,15 +215,25 @@ The Logistic Regression model achieved an AUC of 0.7806, indicating strong discr
 
 Internal PSI = 0.0003 and external PSI = 0.0001, both far below 0.1, suggesting stable population distribution.
 
----
-
 ## Conclusion 
-A robust credit scorecard was developed using WOE binning and logistic regression. The model shows strong discriminatory power (AUC = 0.78, KS = 0.45) and stable score distributions across time and populations (PSI < 0.01). The resulting scorecard provides interpretable points per variable bin, suitable for deployment in credit risk assessment. The XGBoost model offers a marginal improvement in AUC, but the logistic model is preferred for its transparency and ease of interpretation.
 
----
+A robust and interpretable credit scorecard was developed using:
+
+- WOE binning  
+- Logistic regression  
+- Scorecard transformation  
+
+The model achieves:
+
+- Strong discrimination (AUC = 0.78, KS = 0.45)  
+- High stability (PSI < 0.01)  
+
+This makes it suitable for real-world credit risk applications.
 
 ## Future work
-- **Feature Engineering** – Incorporate payment history trends and external credit bureau data.
-- **Class Imbalance** – Experiment with SMOTE or cost‑sensitive learning to better capture rare defaults.
-- **Model Calibration** – Apply Platt scaling to improve probability estimates for business decision thresholds.
-- **Production Deployment** – Containerize the scoring engine and implement automated PSI monitoring.
+
+- Feature engineering (behavioral variables, trends)  
+- Class imbalance handling (SMOTE, cost-sensitive learning)  
+- Probability calibration (Platt scaling)  
+- Reject inference (approved vs. rejected applicants bias)  
+- Automated monitoring (PSI dashboard)
