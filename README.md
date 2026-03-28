@@ -85,6 +85,8 @@ The main R script (`scorecard_script.R`) performs the steps outlined above. Key 
 3. Run the script
 4. The console will display model summaries, AUC, KS, and PSI values. Plots will appear in the graphics device.
 
+---
+
 ## Results
 
 ### Logistic Regression Coefficients (on WOE)
@@ -188,6 +190,8 @@ The final score is the sum of base points and points for each bin across all sel
 
 Both PSI values are far below 0.1, indicating no significant score distribution shift.
 
+---
+
 ## Plots
 The script generates four plots:
 
@@ -209,8 +213,12 @@ The Logistic Regression model achieved an AUC of 0.7806, indicating strong discr
 
 Internal PSI = 0.0003 and external PSI = 0.0001, both far below 0.1, suggesting stable population distribution.
 
+---
+
 ## Conclusion 
 A robust credit scorecard was developed using WOE binning and logistic regression. The model shows strong discriminatory power (AUC = 0.78, KS = 0.45) and stable score distributions across time and populations (PSI < 0.01). The resulting scorecard provides interpretable points per variable bin, suitable for deployment in credit risk assessment. The XGBoost model offers a marginal improvement in AUC, but the logistic model is preferred for its transparency and ease of interpretation.
+
+---
 
 ## Future work
 - **Feature Engineering** – Incorporate payment history trends and external credit bureau data.
