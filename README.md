@@ -193,16 +193,16 @@ Both PSI values are far below 0.1, indicating no significant score distribution 
 The script generates four plots:
 
 Score Distribution by Good/Bad – shows how scores separate good and bad borrowers.
-![Score Distribution](score_distribution.png)
+![Score Distribution](Score_Distribution.png)
 
 ROC Curve – visualizes the model’s discrimination power.
-![ROC Curve](roc_curve.png)
+![ROC Curve](ROC_Curve.png)
 
 PSI Internal (Train vs. Test) – bar chart comparing score distributions.
-![PSI Internal](psi_internal.png)
+![PSI Internal](PSI_Internal.png)
 
 PSI External (Train vs. External) – same comparison with the external scoring set.
-![PSI External](psi_external.png)
+![PSI External](PSI_External.png)
 
 ## Conclusion 
 A robust credit scorecard was developed using WOE binning and logistic regression. The model shows strong discriminatory power (AUC = 0.78, KS = 0.45) and stable score distributions across time and populations (PSI < 0.01). The resulting scorecard provides interpretable points per variable bin, suitable for deployment in credit risk assessment. The XGBoost model offers a marginal improvement in AUC, but the logistic model is preferred for its transparency and ease of interpretation.
