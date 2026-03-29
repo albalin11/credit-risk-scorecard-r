@@ -112,8 +112,8 @@ This helps the model stay interpretable, which is important for credit risk work
 
 | Model | AUC (Test) | KS |
 |------|------------|------|
-| Logistic Regression | 0.7907 | 0.4625 |
-| XGBoost | 0.7944 | — |
+| Logistic Regression | 0.7943 | 0.4778 |
+| XGBoost | 0.7993 | — |
 
 The logistic model works well and is stable on the test set. XGBoost gives a slightly higher AUC, but the improvement is small. So logistic regression is preferred because:
 
@@ -124,8 +124,8 @@ The logistic model works well and is stable on the test set. XGBoost gives a sli
 
 | Comparison | PSI | Interpretation |
 |------------|------|----------------|
-| Train vs. Test | 0.0003 | Very stable |
-| Train vs. External | 0.0001 | Very stable |
+| Train vs. Test | 2e-04 | Very stable |
+| Train vs. External | 2e-04 | Very stable |
 
 Both values < 0.1, so the score distribution looks stable.
 
@@ -148,22 +148,14 @@ To simulate how it would work in production:
   - setting prices based on risk  
   - deciding credit limits
 
-## Code structure
+## Project structure
 
-project/
-├── data/
-├── src/
-│ ├── preprocessing.R
-│ ├── binning.R
-│ ├── model.R
-│ ├── evaluation.R
-├── main.R
+credit-risk-scorecard-r/
+├── Outputs/
+├── Credit_Risk_Scorecard.R
 ├── README.md
-
-This modular design improves:
-- maintainability  
-- reproducibility  
-- production readiness
+├── cs-test.csv
+└── cs-training.csv
 
 ## How to reproduce
 1. Put `cs-training.csv` and `cs-test.csv` in the working directory
@@ -191,7 +183,7 @@ Bad samples are concentrated in lower score bands, while good samples are more c
 ### ROC Curve – visualizes the model’s discrimination power
 ![ROC Curve](Credit_Risk_Scorecard_R/Outputs/ROC_Curve.png)
 
-The Logistic Regression model achieved an AUC of 0.7806, indicating strong discriminative power.
+The Logistic Regression model achieved an AUC of 0.7943, indicating strong discriminative power.
 
 ### PSI Internal (Train vs. Test) – bar chart comparing score distributions
 ![PSI Internal](Credit_Risk_Scorecard_R/Outputs/PSI_Internal.png)
@@ -199,7 +191,7 @@ The Logistic Regression model achieved an AUC of 0.7806, indicating strong discr
 ### PSI External (Train vs. External) – same comparison with the external scoring set
 ![PSI External](Credit_Risk_Scorecard_R/Outputs/PSI_External.png)
 
-Internal PSI = 0.0003 and external PSI = 0.0001, both far below 0.1, suggesting stable population distribution.
+Internal PSI = 2e-04 and external PSI = 2e-04, both far below 0.1, suggesting stable population distribution.
 
 ## What this project shows
 
