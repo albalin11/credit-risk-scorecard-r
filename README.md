@@ -53,25 +53,19 @@ This range balances predictive power while avoiding:
   - `NumberRealEstateLoansOrLines`
   - `NumberOfDependents`  
 
-### 4. Logistic Regression 
+### 3. Logistic Regression 
 - Fit a logistic regression model on WOE transformed features
-  
-Additional checks:
+- Check the summary and coefficient significance
 - Multicollinearity assessed using **VIF**
 - Model kept simple to preserve interpretability
 
-### 5. XGBoost Benchmark
-- Trained on same WOE features  
-- Parameters:
-  - `max_depth = 4`
-  - `eta = 0.1`
-  - `subsample = 0.8`
-  - `colsample_bytree = 0.8`
-
+### 4. XGBoost Benchmark
+- Trained on same WOE features
+  
 **Purpose:**
 - Check if XGBoost gives better results than logistic regression, even though it's harder to explain.
 
-### 6. Scorecard Conversion
+### 5. Scorecard Conversion
 
 The logistic model is converted into a scorecard:
 
@@ -88,7 +82,7 @@ where:
   - `A = Base + B * ln(odds0)`
   - `odds = p / (1-p)`
 
-### 7. Model Evaluation
+### 6. Model Evaluation
 
 - **AUC** for discrimination
 - **KS** for separation between good and bad 
