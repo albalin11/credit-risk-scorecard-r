@@ -148,15 +148,6 @@ To simulate how it would work in production:
   - setting prices based on risk  
   - deciding credit limits
 
-## Project structure
-
-credit-risk-scorecard-r/
-├── Outputs/
-├── Credit_Risk_Scorecard.R
-├── README.md
-├── cs-test.csv
-└── cs-training.csv
-
 ## How to reproduce
 1. Put `cs-training.csv` and `cs-test.csv` in the working directory
 2. Install the packages
@@ -175,21 +166,21 @@ Also generating the main plots.
 ## Plots
 The script generates four plots:
 
-### Score Distribution by Good/Bad – shows how scores separate good and bad borrowers
-![Score Distribution](Credit_Risk_Scorecard_R/Outputs/Score_Distribution.png)
+### Score Distribution by Good/Bad
+![Score Distribution](Outputs/Score_Distribution.png)
 
 Bad samples are concentrated in lower score bands, while good samples are more concentrated in higher score bands, which is consistent with scorecard logic.
 
-### ROC Curve – visualizes the model’s discrimination power
-![ROC Curve](Credit_Risk_Scorecard_R/Outputs/ROC_Curve.png)
+### ROC Curve
+![ROC Curve](Outputs/ROC_Curve.png)
 
 The Logistic Regression model achieved an AUC of 0.7943, indicating strong discriminative power.
 
-### PSI Internal (Train vs. Test) – bar chart comparing score distributions
-![PSI Internal](Credit_Risk_Scorecard_R/Outputs/PSI_Internal.png)
+### PSI Internal (Train vs. Test) 
+![PSI Internal](Outputs/PSI_Internal.png)
 
-### PSI External (Train vs. External) – same comparison with the external scoring set
-![PSI External](Credit_Risk_Scorecard_R/Outputs/PSI_External.png)
+### PSI External (Train vs. External)
+![PSI External](Outputs/PSI_External.png)
 
 Internal PSI = 2e-04 and external PSI = 2e-04, both far below 0.1, suggesting stable population distribution.
 
