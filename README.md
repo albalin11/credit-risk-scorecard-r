@@ -1,8 +1,8 @@
 # Credit Risk Scorecard in R
 
-This project uses the [Give Me Some Credit dataset](https://www.kaggle.com/competitions/GiveMeSomeCredit/data) to estimate two-year serious delinquency risk. A WOE-based logistic regression provides an interpretable scorecard; XGBoost is a fixed-settings benchmark. The analysis also asks whether better ranking translates into better probability estimates and lower observed serious delinquency rates among selected records.
-
 The original credit risk scorecard project was completed in March 2026, focusing on WOE binning, IV-based feature selection and credit risk modelling using Logistic Regression and XGBoost. In October 2026, I revisited the project to refine the modelling implementation and extend the analysis with probability calibration, lending approval thresholds and statistical comparison of model performance.
+
+This project uses the [Give Me Some Credit dataset](https://www.kaggle.com/competitions/GiveMeSomeCredit/data) to estimate two-year serious delinquency risk. A WOE-based logistic regression provides an interpretable scorecard; XGBoost is a fixed-settings benchmark. The analysis also asks whether better ranking translates into better probability estimates and lower observed serious delinquency rates among selected records.
 
 ## Data and method
 
