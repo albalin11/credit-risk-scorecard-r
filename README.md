@@ -1,207 +1,66 @@
-# Credit Risk Scorecard Model (R)
+# Credit Risk Scorecard in R
 
-## Overview
-This project develops a simple **credit risk scorecard** to estimate the probability of default using the **Give Me Some Credit** dataset from Kaggle.
+This project uses the [Give Me Some Credit dataset](https://www.kaggle.com/competitions/GiveMeSomeCredit/data) to estimate two-year serious delinquency risk. A WOE-based logistic regression provides an interpretable scorecard; XGBoost is a fixed-settings benchmark. The analysis also asks whether better ranking translates into better probability estimates and lower observed default rates among approved borrowers.
 
-The goal is to build a model that is:
+## Data and method
 
-- Easy to explain
-- Stable across samples
-- Usable as a scorecard
+`cs-training.csv` contains the observed outcome (`SeriousDlqin2yrs`, where 1 means serious delinquency within two years). The supplied `cs-test.csv` has no outcome labels, so it is used only for score-distribution comparison. One record with `age <= 0` is removed from the labelled data. A stratified, seeded 70/30 split leaves **104,999 training** and **45,000 test** records; the external file has **101,503** records.
 
-A **logistic regression scorecard** is used as the primary model, with **XGBoost** as a  performance benchmark.
+The training medians fill missing `MonthlyIncome` and `NumberOfDependents` values in all three datasets. The training set alone determines WOE bins, their IV, and the scorecard. Variables are retained when **0.02 < binned IV < 0.5**, following the original project's conservative rule. The selected variables and IV are:
 
-## Dataset
-- **Source**: Kaggle – [Give Me Some Credit](https://www.kaggle.com/competitions/GiveMeSomeCredit/data)
-- Train file: `cs-training.csv`
-- External scoring file: `cs-test.csv`
-- Target variable: `SeriousDlqin2yrs` (1 = borrower was 90+ days past due or worse within 2 years, 0 = non-default)
+| Variable | Binned IV |
+|---|---:|
+| age | 0.2621 |
+| NumberOfOpenCreditLinesAndLoans | 0.0789 |
+| DebtRatio | 0.0692 |
+| MonthlyIncome | 0.0674 |
+| NumberRealEstateLoansOrLines | 0.0576 |
+| NumberOfDependents | 0.0351 |
 
-## Main steps
+The upper IV cutoff excludes revolving utilization (1.0470) and two past-due counts (0.8407 and 0.7193). These are plausible credit-risk variables; a high IV alone does **not** establish leakage. This conservative rule therefore gives up predictive information and limits the model's discrimination.
 
-### 1. Data Cleaning
-- Remove rows with invalid age (`age <= 0`)
-- Split the data into train (70%) and test (30%)
-- Use the training set median to fill missing values in:
-   `MonthlyIncome` and `NumberOfDependents`
+Logistic regression and XGBoost use the same selected WOE variables. XGBoost has fixed parameters and 100 rounds; the test set is never used for fitting, tuning, or early stopping. Test-set AUC, KS, and Brier score evaluate the models. Lower Brier score means more accurate probability predictions.
 
-Median imputation is used to preserve sample size and reduce the influence of outliers, giving a quick, robust baseline for further analysis.
-
-### 2. WOE Binning and IV 
-- Applied **WOE (Weight of Evidence)** binning using `scorecard` 
-- Enforced **monotonicity** in WOE to ensure:
-  - risk ordering is consistent
-  - the model is more stable 
-  - it is easier to explain to the business or regulators later  
-
-- Special handling:
-  - Missing values treated as separate bins    
-
-- **Information Value (IV)** used for feature selection:
-
-> Selected features satisfy: `0.02 < IV < 0.5`
-
-This range balances predictive power while avoiding:
-- weak predictors (low IV)
-- overfitting or leakage (very high IV)
-
-#### Selected variables:
-  - `DebtRatio`
-  - `RevolvingUtilizationOfUnsecuredLines`
-  - `age`
-  - `NumberOfOpenCreditLinesAndLoans`
-  - `NumberRealEstateLoansOrLines`
-  - `NumberOfDependents`  
-
-### 3. Logistic Regression 
-- Fit a logistic regression model on WOE transformed features
-- Check the summary and coefficient significance
-- Multicollinearity assessed using **VIF**
-- Model kept simple to preserve interpretability
-
-### 4. XGBoost Benchmark
-- Trained on same WOE features
-  
-**Purpose:**
-- Check if XGBoost gives better results than logistic regression, even though it's harder to explain.
-
-### 5. Scorecard Conversion
-
-The logistic model is converted into a scorecard:
-
-  - Base points: 600
-  - Odds at base: 1:15 (good:bad)
-  - PDO (Points to Double Odds): 60
-    
-PDO = 60 is chosen as an industry standard. It makes the score scaling simple and easier to explain to the business side.
-
-Score formula:  
-  `Score = A - B * ln(odds)`  
-where:
-  - `B = PDO / ln(2)`
-  - `A = Base + B * ln(odds0)`
-  - `odds = p / (1-p)`
-
-### 6. Model Evaluation
-
-- **AUC** for discrimination
-- **KS** for separation between good and bad 
-- **PSI** for score stability
-
-PSI is used not only for validation but also for:
-- keeping an eye on data drift  
-- deciding whether the model needs retraining in production
-
-## Why these variables make sense
-
-- **RevolvingUtilizationOfUnsecuredLines** - High utilization indicates higher pressure on credit
-
-- **DebtRatio** - Higher debt-to-income ratio implies weaker repayment ability  
-
-- **age** - Younger borrowers often have less stable income, leading to higher risk.
-
-- **NumberOfDependents** - More dependents typically increase household expenses, making repayment harder.  
-
-- **Credit line counts** - Reflects credit exposure and usage patterns
-
-This helps the model stay interpretable, which is important for credit risk work.
+The logistic scorecard uses `scorecard::scorecard()` and `scorecard_ply()` with **600 points at bad:good odds of 1:15** and **PDO = 60**. In terms of predicted default probability `p`, the scaling is `600 - 60/log(2) * log((p/(1-p))/(1/15))`. Higher default risk therefore gives a lower score.
 
 ## Results
 
-### Model Performance
+| Model | Test AUC | KS | Brier score | AUC 95% CI (DeLong) |
+|---|---:|---:|---:|---:|
+| Logistic regression | 0.6799 | 0.2826 | 0.06085 | 0.6704–0.6895 |
+| XGBoost | 0.6957 | 0.2986 | 0.06038 | 0.6863–0.7051 |
 
-| Model | AUC (Test) | KS |
-|------|------------|------|
-| Logistic Regression | 0.7943 | 0.4778 |
-| XGBoost | 0.7993 | — |
+XGBoost's AUC advantage is **0.0158** (paired DeLong 95% CI **0.0121–0.0194**, p = **2.93 × 10⁻¹⁷**). The difference is statistically clear in this large test sample, but its size is modest. XGBoost also has a slightly lower Brier score. The [calibration plot](Outputs/Calibration.png) shows both models reasonably close to observed rates across training-defined probability groups; the logistic model overpredicts somewhat in the highest-risk group. AUC measures ranking, not probability accuracy, so the Brier score and calibration plot address a separate question.
 
-The logistic model works well and is stable on the test set. XGBoost gives a slightly higher AUC, but the improvement is small. So logistic regression is preferred because:
+![Test ROC curves](Outputs/ROC_Curve.png)
 
-- it is easier to explain  
-- it is easier to turn into a scorecard  
+![Probability calibration](Outputs/Calibration.png)
 
-### Population Stability Index (PSI)
+For an illustrative approval exercise, each cutoff is the 60th, 70th, or 80th percentile of **training** predictions. Test applicants below the cutoff are approved. These are historical-data comparisons, not lending recommendations.
 
-| Comparison | PSI | Interpretation |
-|------------|------|----------------|
-| Train vs. Test | 2e-04 | Very stable |
-| Train vs. External | 2e-04 | Very stable |
+| Model | Target approval | Actual test approval | Default rate among approved |
+|---|---:|---:|---:|
+| Logistic regression | 60% | 59.70% | 3.84% |
+| XGBoost | 60% | 59.50% | 3.57% |
+| Logistic regression | 70% | 69.56% | 4.42% |
+| XGBoost | 70% | 69.58% | 4.15% |
+| Logistic regression | 80% | 79.64% | 4.99% |
+| XGBoost | 80% | 79.81% | 4.91% |
 
-Both values < 0.1, so the score distribution looks stable.
+The XGBoost groups have slightly lower observed default rates at all three targets. Actual approval rates differ a little because the cutoffs come from training data. The labelled test set's overall default rate is **6.68%**.
 
-## Scorecard example
+![Approval analysis](Outputs/Approval_Analysis.png)
 
-For the `age` variable, the scorecard gives different points for different bins, for example:
+Score PSI uses training-score decile boundaries for both comparisons: **0.00056** for training versus the random holdout, and **0.00025** for training versus the supplied unlabeled file. These small values describe similar score distributions in these files. Neither comparison is a time-based stability test, and outcomes are unavailable for the external file.
 
-- younger borrowers get lower points
-- older borrowers get higher points
+![Test score distribution](Outputs/Score_Distribution.png)
 
-The final score is the sum of the base score and all variable bin points.
+## Reproduce
 
-## Deployment Considerations
+From the repository root, install `scorecard`, `ggplot2`, `xgboost`, and `pROC`, then run:
 
-To simulate how it would work in production:
+```r
+source("Credit_Risk_Scorecard.R")
+```
 
-- Ensured binning consistency between training and scoring  
-- Model output can be directly used for:
-  - credit approval  
-  - setting prices based on risk  
-  - deciding credit limits
-
-## How to reproduce
-1. Put `cs-training.csv` and `cs-test.csv` in the working directory
-2. Install the packages
-3. Run `Credit_Risk_Scorecard.R`
-
-The script will print:
-
-- Logistic regression summary
-- XGBoost AUC
-- Logistic AUC
-- KS
-- PSI values
-
-Also generating the main plots.
-
-## Plots
-The script generates four plots:
-
-### Score Distribution by Good/Bad
-![Score Distribution](Outputs/Score_Distribution.png)
-
-Bad samples are concentrated in lower score bands, while good samples are more concentrated in higher score bands, which is consistent with scorecard logic.
-
-### ROC Curve
-![ROC Curve](Outputs/ROC_Curve.png)
-
-The Logistic Regression model achieved an AUC of 0.7943, indicating strong discriminative power.
-
-### PSI Internal (Train vs. Test) 
-![PSI Internal](Outputs/PSI_Internal.png)
-
-### PSI External (Train vs. External)
-![PSI External](Outputs/PSI_External.png)
-
-Internal PSI = 2e-04 and external PSI = 2e-04, both far below 0.1, suggesting stable population distribution.
-
-## What this project shows
-
-This project shows a basic but complete scorecard workflow:
-
-- data cleaning
-- WOE binning
-- IV screening
-- logistic regression
-- scorecard conversion
-- PSI monitoring
-- a benchmark model for comparison
-
-It is simple, but it covers the parts that matter in a credit risk project.
-
-## Future work
-
-- Feature engineering (behavioral variables, trends)  
-- Class imbalance handling (SMOTE, cost-sensitive learning)  
-- Probability calibration (Platt scaling)  
-- Reject inference (approved vs. rejected applicants bias)  
-- Automated monitoring (PSI dashboard)
+The script prints the selected IV values, sample sizes, model metrics, DeLong intervals and test, PSI, and approval table. It writes four figures to `Outputs/`. Results above were generated with R 4.4.1, `scorecard` 0.4.6, `ggplot2` 4.0.3, `xgboost` 3.2.1.1, and `pROC` 1.19.0.1.

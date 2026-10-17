@@ -1,220 +1,146 @@
-# CREDIT RISK SCORECARD PROJECT
-
-# Packages
-# install.packages(c("scorecard", "ggplot2", "ROCR", "xgboost", "pROC", "car"))
-
-library(scorecard)   
-library(ggplot2)     
-library(ROCR) 
+library(scorecard)
+library(ggplot2)
 library(xgboost)
 library(pROC)
-library(car)
 
 set.seed(42)
-
-# ---- 1. Load data ----
-data <- read.csv("cs-training.csv", row.names = 1)  
+data <- read.csv("cs-training.csv", row.names = 1, check.names = FALSE)
 data <- subset(data, age > 0)
+groups <- split(seq_len(nrow(data)), data$SeriousDlqin2yrs)
+train_rows <- unlist(lapply(groups, function(x) sample(x, floor(0.7 * length(x)))))
+train <- data[train_rows, ]
+test <- data[-train_rows, ]
+external <- read.csv("cs-test.csv", row.names = 1, check.names = FALSE)
+external <- subset(external, age > 0)
 
-# ---- 2. Train / test split ----
-idx_by_y <- split(seq_len(nrow(data)), data$SeriousDlqin2yrs)
-train_idx <- unlist(lapply(idx_by_y, function(x) sample(x, floor(length(x) * 0.7))))
-train_set <- data[train_idx, ]
-test_set  <- data[-train_idx, ]
-
-# ---- 3. Missing values ----
-income_med <- median(train_set$MonthlyIncome, na.rm = TRUE)
-dep_med <- median(train_set$NumberOfDependents, na.rm = TRUE)
-
-train_set$MonthlyIncome[is.na(train_set$MonthlyIncome)] <- income_med
-test_set$MonthlyIncome[is.na(test_set$MonthlyIncome)] <- income_med
-
-train_set$NumberOfDependents[is.na(train_set$NumberOfDependents)] <- dep_med
-test_set$NumberOfDependents[is.na(test_set$NumberOfDependents)] <- dep_med
-
-# ---- 4. WOE binning and IV ----
-feature_names <- setdiff(names(train_set), "SeriousDlqin2yrs")
-
-bins <- woebin(train_set, y = "SeriousDlqin2yrs", x = feature_names, 
-               bin_num_limit = 5,   
-               positive = "1",  
-               no_cores = 1, monotone = TRUE)        
-
-iv_table <- as.data.frame(iv(train_set, y = "SeriousDlqin2yrs", x = feature_names))
-selected_vars <- iv_table$variable[iv_table$info_value > 0.02 & iv_table$info_value < 0.5]
-if (length(selected_vars) == 0) selected_vars <- feature_names
-
-train_woe <- woebin_ply(train_set, bins)
-test_woe <- woebin_ply(test_set, bins)
-
-# ---- 5. Logistic Regression ----
-selected_woe_vars <- paste0(selected_vars, "_woe")
-selected_woe_vars <- intersect(selected_woe_vars, names(train_woe))
-if (length(selected_woe_vars) == 0) {
-  selected_woe_vars <- grep("_woe$", names(train_woe), value = TRUE)
+# Learn missing-value replacements from the training set.
+for (name in c("MonthlyIncome", "NumberOfDependents")) {
+  value <- median(train[[name]], na.rm = TRUE)
+  train[[name]][is.na(train[[name]])] <- value
+  test[[name]][is.na(test[[name]])] <- value
+  external[[name]][is.na(external[[name]])] <- value
 }
 
-formula_lr <- as.formula(
-  paste("SeriousDlqin2yrs ~",
-    paste(sprintf("`%s`", selected_woe_vars), collapse = " + ")))
+features <- setdiff(names(train), "SeriousDlqin2yrs")
+bins <- woebin(train, y = "SeriousDlqin2yrs", x = features,
+               bin_num_limit = 5, positive = "1", no_cores = 1)
+iv_values <- vapply(bins, function(x) x$total_iv[1], numeric(1))
+selected <- names(iv_values)[iv_values > 0.02 & iv_values < 0.5]
+bins <- bins[selected]
+woe_names <- paste0(selected, "_woe")
 
-lr_model <- glm(formula_lr, data = train_woe, family = binomial())
-summary(lr_model)
+train_woe <- woebin_ply(train, bins, no_cores = 1)
+test_woe <- woebin_ply(test, bins, no_cores = 1)
+formula <- reformulate(sprintf("`%s`", woe_names), response = "SeriousDlqin2yrs")
+lr <- glm(formula, data = train_woe, family = binomial())
+lr_train <- predict(lr, train_woe, type = "response")
+lr_test <- predict(lr, test_woe, type = "response")
 
-# Simple collinearity check
-if (length(selected_woe_vars) > 1) {
-  print(tryCatch(vif(lr_model), error = function(e) e$message))
-}
+# Fixed benchmark settings; the test set is used only for evaluation.
+x_train <- xgb.DMatrix(as.matrix(as.data.frame(train_woe)[, woe_names]),
+                       label = train$SeriousDlqin2yrs)
+x_test <- xgb.DMatrix(as.matrix(as.data.frame(test_woe)[, woe_names]))
+xgb <- xgb.train(
+  params = list(objective = "binary:logistic", max_depth = 4, eta = 0.1,
+                subsample = 0.8, colsample_bytree = 0.8, nthread = 1),
+  data = x_train, nrounds = 100, verbose = 0
+)
+xgb_train <- predict(xgb, x_train)
+xgb_test <- predict(xgb, x_test)
 
-# ---- 6. xgboost as benchmark ----
-train_xgb <- as.matrix(as.data.frame(train_woe)[, selected_woe_vars])
-test_xgb  <- as.matrix(as.data.frame(test_woe)[, selected_woe_vars])
+# odds0 is bad/good; higher default risk must give fewer points.
+card <- scorecard(bins, lr, points0 = 600, odds0 = 1 / 15, pdo = 60)
+train_score <- scorecard_ply(train, card)$score
+test_score <- scorecard_ply(test, card)$score
+external_score <- scorecard_ply(external, card)$score
 
-xgb_train <- xgb.DMatrix(data = train_xgb, label = train_woe$SeriousDlqin2yrs)
-xgb_test <- xgb.DMatrix(data = test_xgb, label = test_woe$SeriousDlqin2yrs)
-
-xgb_model <- xgb.train(
-  params = list(
-    objective = "binary:logistic",
-    eval_metric = "auc",
-    max_depth = 4,
-    eta = 0.1,
-    subsample = 0.8,
-    colsample_bytree = 0.8
-  ),
-  data = xgb_train,
-  nrounds = 100,
-  evals = list(train = xgb_train, test = xgb_test),
-  verbose = 0
+y <- test$SeriousDlqin2yrs
+roc_lr <- roc(y, lr_test, levels = c(0, 1), direction = "<", quiet = TRUE)
+roc_xgb <- roc(y, xgb_test, levels = c(0, 1), direction = "<", quiet = TRUE)
+auc_test <- roc.test(roc_xgb, roc_lr, paired = TRUE, method = "delong")
+results <- data.frame(
+  model = c("Logistic", "XGBoost"),
+  AUC = c(as.numeric(auc(roc_lr)), as.numeric(auc(roc_xgb))),
+  KS = c(max(roc_lr$sensitivities + roc_lr$specificities - 1),
+         max(roc_xgb$sensitivities + roc_xgb$specificities - 1)),
+  Brier = c(mean((lr_test - y)^2), mean((xgb_test - y)^2))
 )
 
-xgb_pred <- predict(xgb_model, xgb_test)
-xgb_auc <- as.numeric(auc(test_woe$SeriousDlqin2yrs, xgb_pred))
-print(paste("XGBoost AUC =", xgb_auc))
+# Calibration groups use cut points from training predictions.
+train_pred <- list(Logistic = lr_train, XGBoost = xgb_train)
+test_pred <- list(Logistic = lr_test, XGBoost = xgb_test)
+calibration <- do.call(rbind, lapply(names(test_pred), function(model) {
+  breaks <- unique(quantile(train_pred[[model]], seq(0.1, 0.9, 0.1)))
+  bin <- cut(test_pred[[model]], c(-Inf, breaks, Inf))
+  out <- aggregate(cbind(predicted = test_pred[[model]], observed = y),
+                   by = list(bin = bin), FUN = mean)
+  out$model <- model
+  out
+}))
 
-# ---- 7. Scorecard conversion---- 
-card <- scorecard(bins, lr_model, 
-                  points0 = 600,   
-                  odds0 = 1/15,    
-                  pdo = 60)        
-print(card)
+approval <- do.call(rbind, lapply(names(test_pred), function(model) {
+  do.call(rbind, lapply(c(0.6, 0.7, 0.8), function(target) {
+    cutoff <- unname(quantile(train_pred[[model]], target))
+    approved <- test_pred[[model]] <= cutoff
+    data.frame(model, target, cutoff, approved_rate = mean(approved),
+               default_rate = mean(y[approved]))
+  }))
+}))
 
-prob_to_score <- function(prob, base = 600, odds0 = 1/15, pdo = 60) {
-  prob <- pmin(pmax(prob, 1e-10), 1 - 1e-10)
-  b <- pdo / log(2)
-  a <- base + b * log(odds0)
-  as.integer(a - b * log(prob / (1 - prob)))
-}
+# Train-score deciles set the same PSI boundaries for both comparisons.
+score_breaks <- c(-Inf, unique(quantile(train_score, seq(0.1, 0.9, 0.1))), Inf)
+expected <- prop.table(table(cut(train_score, score_breaks)))
+psi <- sapply(list(Test = test_score, External = external_score), function(score) {
+  actual <- prop.table(table(cut(score, score_breaks)))
+  p <- pmax(as.numeric(expected), 1e-6)
+  q <- pmax(as.numeric(actual), 1e-6)
+  sum((q - p) * log(q / p))
+})
 
-train_prob <- predict(lr_model, newdata = train_woe, type = "response")
-test_prob  <- predict(lr_model, newdata = test_woe,  type = "response")
+cat("Samples: train", nrow(train), "test", nrow(test),
+    "external", nrow(external), "\n")
+cat("Selected binned IV:\n")
+print(round(iv_values[selected], 4))
+cat("Test performance:\n")
+print(results, row.names = FALSE, digits = 4)
+cat("AUC 95% DeLong CIs: logistic", round(ci.auc(roc_lr), 4),
+    "XGBoost", round(ci.auc(roc_xgb), 4), "\n")
+cat("Paired AUC difference (XGBoost - logistic):",
+    round(unname(auc_test$estimate[1] - auc_test$estimate[2]), 4),
+    "95% CI", round(auc_test$conf.int, 4),
+    "p =", signif(auc_test$p.value, 3), "\n")
+cat("PSI:", round(psi, 5), "\n")
+cat("Approval analysis:\n")
+print(approval, row.names = FALSE, digits = 4)
 
-train_score <- prob_to_score(train_prob)
-test_score  <- prob_to_score(test_prob)
+dir.create("Outputs", showWarnings = FALSE)
+png("Outputs/ROC_Curve.png", width = 900, height = 650)
+plot(roc_lr, col = "#2369a1", lwd = 2, main = "Test ROC curves")
+lines(roc_xgb, col = "#d17b29", lwd = 2)
+legend("bottomright", c("Logistic", "XGBoost"),
+       col = c("#2369a1", "#d17b29"), lwd = 2)
+dev.off()
 
-# ---- 8. External scoring ----
-ext_data <- read.csv("cs-test.csv", row.names = 1)
-ext_data <- subset(ext_data, age > 0)
-
-ext_data$MonthlyIncome[is.na(ext_data$MonthlyIncome)] <- income_med
-ext_data$NumberOfDependents[is.na(ext_data$NumberOfDependents)] <- dep_med
-
-ext_woe <- woebin_ply(ext_data, bins)
-ext_prob  <- predict(lr_model, newdata = ext_woe, type = "response")
-ext_score <- prob_to_score(ext_prob)
-
-# ---- 9. Model evaluation ----
-
-# AUC
-roc_obj <- roc(response = test_woe$SeriousDlqin2yrs, predictor = test_prob, quiet = TRUE)
-logit_auc <- as.numeric(auc(roc_obj))
-print(paste("Logistic AUC = ", logit_auc))
-
-# KS
-pred_obj <- prediction(test_prob, test_woe$SeriousDlqin2yrs)
-perf_obj <- performance(pred_obj, "tpr", "fpr")
-ks_value <- max(slot(perf_obj, "y.values")[[1]] - slot(perf_obj, "x.values")[[1]])
-print(paste("KS =", ks_value))
-
-# PSI
-psi_calc <- function(expected_score, actual_score, bins = 10) {
-  breaks <- quantile(expected_score, probs = seq(0, 1, length.out = bins + 1), na.rm = TRUE)
-  breaks <- unique(breaks)
-  breaks[1] <- -Inf
-  breaks[length(breaks)] <- Inf
-  
-  expected_bin <- cut(expected_score, breaks = breaks, include.lowest = TRUE)
-  actual_bin <- cut(actual_score, breaks = breaks, include.lowest = TRUE)
-  
-  expected_pct <- prop.table(table(expected_bin))
-  actual_pct <- prop.table(table(actual_bin))
-  
-  all_bins <- union(names(expected_pct), names(actual_pct))
-  expected_pct <- expected_pct[all_bins]
-  actual_pct <- actual_pct[all_bins]
-  
-  expected_pct[is.na(expected_pct)] <- 0
-  actual_pct[is.na(actual_pct)] <- 0
-  expected_pct[expected_pct == 0] <- 1e-6
-  actual_pct[actual_pct == 0] <- 1e-6
-  
-  psi_each <- (expected_pct - actual_pct) * log(expected_pct / actual_pct)
-  
-  list(
-    psi = sum(psi_each),
-    data = data.frame(
-      bin = all_bins,
-      expected = as.numeric(expected_pct),
-      actual = as.numeric(actual_pct)
-    )
-  )
-}
-
-psi_internal <- psi_calc(train_score, test_score)
-psi_external <- psi_calc(train_score, ext_score)
-
-print(paste("Internal PSI =", round(psi_internal$psi, 4)))
-print(paste("External PSI =", round(psi_external$psi, 4)))
-
-# ---- 10. Plots ----
-# Score distribution
-test_woe$Score <- test_score
-p_score <- ggplot(test_woe, aes(x = Score, fill = as.factor(SeriousDlqin2yrs))) +
-  geom_histogram(position = "identity", alpha = 0.5, bins = 30) +
-  labs(
-    title = "Score Distribution by Good/Bad",
-    x = "Credit Score",
-    y = "Count",
-    fill = "Class"
-  ) +
+p_cal <- ggplot(calibration, aes(predicted, observed, color = model)) +
+  geom_abline(slope = 1, intercept = 0, linetype = "dashed", color = "grey50") +
+  geom_line() + geom_point() +
+  labs(title = "Test probability calibration", x = "Mean predicted default probability",
+       y = "Observed default rate", color = "Model") +
   theme_minimal()
+ggsave("Outputs/Calibration.png", p_cal, width = 7, height = 5, dpi = 150)
 
-print(p_score)
+p_approval <- ggplot(approval, aes(target, default_rate, color = model)) +
+  geom_line() + geom_point(size = 2) +
+  scale_x_continuous(breaks = c(0.6, 0.7, 0.8), labels = c("60%", "70%", "80%")) +
+  scale_y_continuous(labels = function(x) paste0(round(100 * x, 1), "%")) +
+  labs(title = "Observed default rate among approved test borrowers",
+       x = "Target approval rate (training set)", y = "Approved default rate",
+       color = "Model") + theme_minimal()
+ggsave("Outputs/Approval_Analysis.png", p_approval, width = 7, height = 5, dpi = 150)
 
-# ROC curve
-plot(roc_obj, main = "ROC Curve")
-
-# PSI
-plot_psi <- function(psi_obj, title_text) {
-  plot_df <- data.frame(
-    bin = rep(psi_obj$data$bin, 2),
-    pct = c(psi_obj$data$expected, psi_obj$data$actual),
-    sample = rep(c("Expected", "Actual"), each = nrow(psi_obj$data))
-  )
-  
-  ggplot(plot_df, aes(x = bin, y = pct, fill = sample)) +
-    geom_col(position = "dodge") +
-    labs(
-      title = paste0(title_text, " (PSI = ", psi_obj$psi, ")"),
-      x = "Score Bin",
-      y = "Percentage",
-      fill = "Sample"
-    ) +
-    scale_fill_manual(values = c("Expected" = "#2E86C1", "Actual" = "#E74C3C")) +
-    theme_minimal() +
-    theme(axis.text.x = element_text(angle = 45, hjust = 1))
-}
-
-print(plot_psi(psi_internal, "PSI Internal (Train vs Test)"))
-print(plot_psi(psi_external, "PSI External (Train vs External)"))
-
+p_score <- ggplot(data.frame(score = test_score, default = factor(y)),
+                  aes(score, fill = default)) +
+  geom_density(alpha = 0.4) +
+  labs(title = "Test score distribution", x = "Credit score", y = "Density",
+       fill = "Default") + theme_minimal()
+ggsave("Outputs/Score_Distribution.png", p_score, width = 7, height = 5, dpi = 150)
