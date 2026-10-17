@@ -57,7 +57,7 @@ xgb <- xgb.train(
 xgb_train <- predict(xgb, x_train)
 xgb_test <- predict(xgb, x_test)
 
-# odds0 is bad/good; higher default risk must give fewer points.
+# odds0 is bad/good; higher serious delinquency risk gives fewer points.
 card <- scorecard(bins, lr, points0 = 600, odds0 = 1 / 15, pdo = 60)
 train_score <- scorecard_ply(train, card)$score
 test_score <- scorecard_ply(test, card)$score
@@ -133,8 +133,9 @@ dev.off()
 p_cal <- ggplot(calibration, aes(predicted, observed, color = model)) +
   geom_abline(slope = 1, intercept = 0, linetype = "dashed", color = "grey50") +
   geom_line() + geom_point() +
-  labs(title = "Test probability calibration", x = "Mean predicted default probability",
-       y = "Observed default rate", color = "Model") +
+  labs(title = "Test probability calibration",
+       x = "Mean predicted serious delinquency probability",
+       y = "Observed serious delinquency rate", color = "Model") +
   theme_minimal()
 ggsave("Outputs/Calibration.png", p_cal, width = 7, height = 5, dpi = 150)
 
@@ -142,14 +143,17 @@ p_approval <- ggplot(approval, aes(target, default_rate, color = model)) +
   geom_line() + geom_point(size = 2) +
   scale_x_continuous(breaks = c(0.6, 0.7, 0.8), labels = c("60%", "70%", "80%")) +
   scale_y_continuous(labels = function(x) paste0(round(100 * x, 1), "%")) +
-  labs(title = "Observed default rate among approved test borrowers",
-       x = "Target approval rate (training set)", y = "Approved default rate",
+  labs(title = "Serious delinquency rate in illustrative approvals",
+       subtitle = "Historical labels; thresholds from training data",
+       x = "Target approval rate (training set)",
+       y = "Serious delinquency rate among selected records",
        color = "Model") + theme_minimal()
 ggsave("Outputs/Approval_Analysis.png", p_approval, width = 7, height = 5, dpi = 150)
 
-p_score <- ggplot(data.frame(score = test_score, default = factor(y)),
+p_score <- ggplot(data.frame(score = test_score,
+                             default = factor(y, labels = c("No", "Yes"))),
                   aes(score, fill = default)) +
   geom_density(alpha = 0.4) +
   labs(title = "Test score distribution", x = "Credit score", y = "Density",
-       fill = "Default") + theme_minimal()
+       fill = "Serious delinquency") + theme_minimal()
 ggsave("Outputs/Score_Distribution.png", p_score, width = 7, height = 5, dpi = 150)
