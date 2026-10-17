@@ -6,9 +6,9 @@ This project uses the [Give Me Some Credit dataset](https://www.kaggle.com/compe
 
 ## Data and method
 
-`cs-training.csv` contains the observed outcome (`SeriousDlqin2yrs`, where 1 means serious delinquency within two years). The supplied `cs-test.csv` has no outcome labels, so it is used only for score-distribution comparison. Download both files from Kaggle; they are not redistributed in this repository. One record with `age <= 0` is removed from the labelled data. A stratified, seeded 70/30 split leaves **104,999 training** and **45,000 test** records; the external file has **101,503** records.
+`cs-training.csv` contains the observed outcome (`SeriousDlqin2yrs`, where 1 means serious delinquency within two years). The supplied `cs-test.csv` has no outcome labels, so it is used only for score-distribution comparison. The CSV files are not included in the current repository snapshot and can be downloaded from Kaggle. One record with `age <= 0` is removed from the labelled data. A stratified, seeded 70/30 split leaves **104,999 training** and **45,000 test** records; the external file has **101,503** records.
 
-The training medians fill missing `MonthlyIncome` and `NumberOfDependents` values in all three datasets. The training set alone determines WOE bins, their IV, and the scorecard. The two column names containing hyphens are shortened to `Late30to59` and `Late60to89` internally so `scorecard_ply()` matches them to the fitted model. Variables are retained when **binned IV > 0.02**. The selected variables and IV are:
+The training medians fill missing `MonthlyIncome` and `NumberOfDependents` values in all three datasets. The training set alone determines WOE bins, their IV, and the scorecard. The two column names containing hyphens are shortened to `Late30to59` and `Late60to89` internally so `scorecard_ply()` matches them to the fitted model. Variables are retained when **binned IV > 0.02**. All ten candidate variables meet this threshold; their binned IV values are:
 
 | Variable | Binned IV |
 |---|---:|
