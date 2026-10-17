@@ -2,6 +2,8 @@
 
 This project uses the [Give Me Some Credit dataset](https://www.kaggle.com/competitions/GiveMeSomeCredit/data) to estimate two-year serious delinquency risk. A WOE-based logistic regression provides an interpretable scorecard; XGBoost is a fixed-settings benchmark. The analysis also asks whether better ranking translates into better probability estimates and lower observed serious delinquency rates among selected records.
 
+The original credit risk scorecard project was completed in March 2026, focusing on WOE binning, IV-based feature selection and credit risk modelling using Logistic Regression and XGBoost. In October 2026, I revisited the project to refine the modelling implementation and extend the analysis with probability calibration, lending approval thresholds and statistical comparison of model performance.
+
 ## Data and method
 
 `cs-training.csv` contains the observed outcome (`SeriousDlqin2yrs`, where 1 means serious delinquency within two years). The supplied `cs-test.csv` has no outcome labels, so it is used only for score-distribution comparison. Download both files from Kaggle; they are not redistributed in this repository. One record with `age <= 0` is removed from the labelled data. A stratified, seeded 70/30 split leaves **104,999 training** and **45,000 test** records; the external file has **101,503** records.
