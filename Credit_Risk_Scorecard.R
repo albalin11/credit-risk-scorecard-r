@@ -5,12 +5,17 @@ library(pROC)
 
 set.seed(42)
 data <- read.csv("cs-training.csv", row.names = 1, check.names = FALSE)
+# Short names let scorecard match these variables to the fitted model.
+names(data)[names(data) == "NumberOfTime30-59DaysPastDueNotWorse"] <- "Late30to59"
+names(data)[names(data) == "NumberOfTime60-89DaysPastDueNotWorse"] <- "Late60to89"
 data <- subset(data, age > 0)
 groups <- split(seq_len(nrow(data)), data$SeriousDlqin2yrs)
 train_rows <- unlist(lapply(groups, function(x) sample(x, floor(0.7 * length(x)))))
 train <- data[train_rows, ]
 test <- data[-train_rows, ]
 external <- read.csv("cs-test.csv", row.names = 1, check.names = FALSE)
+names(external)[names(external) == "NumberOfTime30-59DaysPastDueNotWorse"] <- "Late30to59"
+names(external)[names(external) == "NumberOfTime60-89DaysPastDueNotWorse"] <- "Late60to89"
 external <- subset(external, age > 0)
 
 # Learn missing-value replacements from the training set.
@@ -24,6 +29,10 @@ for (name in c("MonthlyIncome", "NumberOfDependents")) {
 features <- setdiff(names(train), "SeriousDlqin2yrs")
 bins <- woebin(train, y = "SeriousDlqin2yrs", x = features,
                bin_num_limit = 5, positive = "1", no_cores = 1)
+# The default 5% minimum merges all Late60to89 values into one bin.
+bins$Late60to89 <- woebin(train, y = "SeriousDlqin2yrs", x = "Late60to89",
+                          bin_num_limit = 5, count_distr_limit = 0.01,
+                          positive = "1", no_cores = 1)$Late60to89
 iv_values <- vapply(bins, function(x) x$total_iv[1], numeric(1))
 selected <- names(iv_values)[iv_values > 0.02]
 bins <- bins[selected]
