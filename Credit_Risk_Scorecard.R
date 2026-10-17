@@ -25,7 +25,7 @@ features <- setdiff(names(train), "SeriousDlqin2yrs")
 bins <- woebin(train, y = "SeriousDlqin2yrs", x = features,
                bin_num_limit = 5, positive = "1", no_cores = 1)
 iv_values <- vapply(bins, function(x) x$total_iv[1], numeric(1))
-selected <- names(iv_values)[iv_values > 0.02 & iv_values < 0.5]
+selected <- names(iv_values)[iv_values > 0.02]
 bins <- bins[selected]
 woe_names <- paste0(selected, "_woe")
 
